@@ -63,6 +63,15 @@
 
         <li>
 
+            <a class="apidocElementLiA" href="#apidoc.element.npm_lazy.npm_lazy">
+            function <span class="apidocSignatureSpan"></span>npm_lazy
+            <span class="apidocSignatureSpan">(config)</span>
+            </a>
+
+        </li>
+
+        <li>
+
             <a class="apidocElementLiA" href="#apidoc.element.npm_lazy.cache">
             function <span class="apidocSignatureSpan">npm_lazy.</span>cache
             <span class="apidocSignatureSpan">(opts)</span>
@@ -638,6 +647,104 @@
 
 
     <h2>
+        <a href="#apidoc.element.npm_lazy.npm_lazy" id="apidoc.element.npm_lazy.npm_lazy">
+        function <span class="apidocSignatureSpan"></span>npm_lazy
+        <span class="apidocSignatureSpan">(config)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function start(config) {
+  var minilog = require(&#x27;minilog&#x27;);
+
+  if (config.loggingOpts.logToConsole) {
+    minilog.enable();
+  } else {
+    minilog.disable();
+  }
+
+  if (config.loggingOpts.logToFile) {
+    minilog.pipe(fs.createWriteStream(config.loggingOpts.filename, {flags: &#x27;w&#x27;}));
+  }
+
+  // parse proxy config, see https://wiki.archlinux.org/index.php/proxy_settings for an example
+  if (!config.proxy || !config.proxy.http || !config.proxy.https) {
+    config.proxy = {
+      http: (process.env.http_proxy ? process.env.http_proxy : config.proxy.http),
+      https: (process.env.https_proxy ? process.env.https_proxy : config.proxy.https)
+    };
+  }
+
+  if (config.proxy.http) {
+    if (!config.proxy.https) {
+        // fall back to assuming that both http and https use the same proxy
+        config.proxy.https = config.proxy.http;
+    }
+    // parse
+    if (typeof config.proxy.http === &#x27;string&#x27;) {
+      config.proxy.http = url.parse(config.proxy.http);
+    }
+    if (typeof config.proxy.https === &#x27;string&#x27;) {
+      config.proxy.https = url.parse(config.proxy.https);
+    }
+  }
+
+  Resource.configure({
+    cache: new Cache({ path: config.cacheDirectory }),
+    logger: log,
+    cacheAge: config.cacheAge,
+    maxRetries: config.maxRetries,
+    timeout: config.httpTimeout,
+    rejectUnauthorized: config.rejectUnauthorized,
+    proxy: config.proxy
+  });
+
+  var packageConfig = {
+    logger: log,
+    externalUrl: config.externalUrl,
+    remoteUrl: config.remoteUrl,
+    rejectUnauthorized: config.rejectUnauthorized
+  };
+
+  Package.configure(packageConfig);
+  api.configure(packageConfig);
+
+  var server = http.createServer();
+
+  server.on(&#x27;request&#x27;, function(req, res) {
+    if (config.loggingOpts.logRequesterIP) {
+      log.info(&#x22;Request from ip: &#x22;+req.connection.remoteAddress+ &#x22; for &#x22;+req.url);
+    }
+    if (!api.route(req, res)) {
+      log.error(&#x27;No route found&#x27;, req.url);
+      Package.proxy(req, res);
+    }
+  }).listen(config.port, config.host);
+
+  log.info(&#x27;npm_lazy at&#x27;, config.host, &#x27;port&#x27;, config.port);
+  log.info(&#x27;npm_lazy cache directory:&#x27;, path.normalize(config.cacheDirectory));
+
+  // log the proxy config
+  Object.keys(config.proxy).forEach(function(proto) {
+    var conf = config.proxy[proto];
+    if (conf) {
+      log.info(&#x27;Using &#x27; + conf.protocol + &#x27;//&#x27; + conf.hostname + &#x27;:&#x27; + conf.port + &#x27; to proxy &#x27; + proto + &#x27; requests.&#x27;);
+    }
+  });
+
+<span class="apidocCodeCommentSpan">  /*
+  Resource.get(&#x27;http://www.lagado.com/proxy-test&#x27;)._fetchTask(function(err, res) {
+    if(res) {
+      res.pipe(process.stdout);
+    }
+  });
+  */
+</span>}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
         <a href="#apidoc.element.npm_lazy.cache" id="apidoc.element.npm_lazy.cache">
         function <span class="apidocSignatureSpan">npm_lazy.</span>cache
         <span class="apidocSignatureSpan">(opts)</span>
@@ -757,7 +864,23 @@
     logger = config.logger;
   }
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+    config.proxy.http = url.parse(config.proxy.http);
+  }
+  if (typeof config.proxy.https === &#x27;string&#x27;) {
+    config.proxy.https = url.parse(config.proxy.https);
+  }
+}
+
+Resource.<span class="apidocCodeKeywordSpan">configure</span>({
+  cache: new Cache({ path: config.cacheDirectory }),
+  logger: log,
+  cacheAge: config.cacheAge,
+  maxRetries: config.maxRetries,
+  timeout: config.httpTimeout,
+  rejectUnauthorized: config.rejectUnauthorized,
+  proxy: config.proxy
+...</pre></li>
     </ul>
 
 
@@ -1279,18 +1402,19 @@ Lifecycle.prototype.isBlocking = function(resource) {
     <li>example usage<pre class="apidocCodePre">...
 };
 
-Package.getIndex = function(pname, auth, onDone) {
-// package index
-var uri = remoteUrl + pname,
-    r = Resource.get(uri, auth);
+Package.configure(packageConfig);
+api.configure(packageConfig);
 
-r.<span class="apidocCodeKeywordSpan">on</span>(&#x27;fetch-error&#x27;, function(err, current, max) {
-  logger.log(&#x27;Fetch failed (&#x27; + current + &#x27;/&#x27; + max + &#x27;): &#x27; + uri, err);
-});
+var server = http.createServer();
 
-r.on(&#x27;fetch-cached&#x27;, function() {
-  logger.log(&#x27;[OK] Reusing cached result for &#x27; + uri);
-});
+server.<span class="apidocCodeKeywordSpan">on</span>(&#x27;request&#x27;, function(req, res) {
+  if (config.loggingOpts.logRequesterIP) {
+    log.info(&#x22;Request from ip: &#x22;+req.connection.remoteAddress+ &#x22; for &#x22;+req.url);
+  }
+  if (!api.route(req, res)) {
+    log.error(&#x27;No route found&#x27;, req.url);
+    Package.proxy(req, res);
+  }
 ...</pre></li>
     </ul>
 
@@ -1576,7 +1700,23 @@ var uri = remoteUrl + pname,
     logger = opts.logger;
   }
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+    config.proxy.http = url.parse(config.proxy.http);
+  }
+  if (typeof config.proxy.https === &#x27;string&#x27;) {
+    config.proxy.https = url.parse(config.proxy.https);
+  }
+}
+
+Resource.<span class="apidocCodeKeywordSpan">configure</span>({
+  cache: new Cache({ path: config.cacheDirectory }),
+  logger: log,
+  cacheAge: config.cacheAge,
+  maxRetries: config.maxRetries,
+  timeout: config.httpTimeout,
+  rejectUnauthorized: config.rejectUnauthorized,
+  proxy: config.proxy
+...</pre></li>
     </ul>
 
 
@@ -1746,7 +1886,23 @@ Package.<span class="apidocCodeKeywordSpan">getVersion</span>(name, version, fun
   // logger.log(req.headers);
   // req.pipe(process.stdout);
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+server.on(&#x27;request&#x27;, function(req, res) {
+  if (config.loggingOpts.logRequesterIP) {
+    log.info(&#x22;Request from ip: &#x22;+req.connection.remoteAddress+ &#x22; for &#x22;+req.url);
+  }
+  if (!api.route(req, res)) {
+    log.error(&#x27;No route found&#x27;, req.url);
+    Package.<span class="apidocCodeKeywordSpan">proxy</span>(req, res);
+  }
+}).listen(config.port, config.host);
+
+log.info(&#x27;npm_lazy at&#x27;, config.host, &#x27;port&#x27;, config.port);
+log.info(&#x27;npm_lazy cache directory:&#x27;, path.normalize(config.cacheDirectory));
+
+// log the proxy config
+...</pre></li>
     </ul>
 
 
@@ -1815,7 +1971,23 @@ Package.<span class="apidocCodeKeywordSpan">getVersion</span>(name, version, fun
     proxy = opts.proxy;
   }
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+    config.proxy.http = url.parse(config.proxy.http);
+  }
+  if (typeof config.proxy.https === &#x27;string&#x27;) {
+    config.proxy.https = url.parse(config.proxy.https);
+  }
+}
+
+Resource.<span class="apidocCodeKeywordSpan">configure</span>({
+  cache: new Cache({ path: config.cacheDirectory }),
+  logger: log,
+  cacheAge: config.cacheAge,
+  maxRetries: config.maxRetries,
+  timeout: config.httpTimeout,
+  rejectUnauthorized: config.rejectUnauthorized,
+  proxy: config.proxy
+...</pre></li>
     </ul>
 
 
@@ -1834,21 +2006,22 @@ Package.<span class="apidocCodeKeywordSpan">getVersion</span>(name, version, fun
   return resourceCache[url];
 }</pre></li>
     <li>example usage<pre class="apidocCodePre">...
-}
-if (typeof config.logger !== &#x27;undefined&#x27;) {
-  logger = config.logger;
-}
-};
+    var conf = config.proxy[proto];
+    if (conf) {
+      log.info(&#x27;Using &#x27; + conf.protocol + &#x27;//&#x27; + conf.hostname + &#x27;:&#x27; + conf.port + &#x27; to proxy
+ &#x27; + proto + &#x27; requests.&#x27;);
+    }
+  });
 
-// GET /package
-api.<span class="apidocCodeKeywordSpan">get</span>(new RegExp(&#x27;^/([^/]+)$&#x27;), function(req, res, match) {
-var name = match[1];
-var auth = req.headers.authorization;
-
-Package.getIndex(name, auth, function(err, fullpath, etag) {
-  if (err) {
-    res.statusCode = err.statusCode || 500;
-    logger.error(&#x27;[&#x27; + res.statusCode + &#x27;] Error: &#x27;, err);
+  /*
+  Resource.<span class="apidocCodeKeywordSpan">get</span>(&#x27;http://www.lagado.com/proxy-test&#x27;)._fetchTask(function(err,
+res) {
+    if(res) {
+      res.pipe(process.stdout);
+    }
+  });
+  */
+}
 ...</pre></li>
     </ul>
 
@@ -2091,20 +2264,22 @@ x27;));
   });
 }</pre></li>
     <li>example usage<pre class="apidocCodePre">...
-  return done(&#x27;{ &#x22;error&#x22;: &#x22;Unknown error&#x22; }&#x27;);
+    var conf = config.proxy[proto];
+    if (conf) {
+      log.info(&#x27;Using &#x27; + conf.protocol + &#x27;//&#x27; + conf.hostname + &#x27;:&#x27; + conf.port + &#x27; to proxy
+ &#x27; + proto + &#x27; requests.&#x27;);
+    }
+  });
+
+  /*
+  Resource.get(&#x27;http://www.lagado.com/proxy-test&#x27;).<span class="apidocCodeKeywordSpan">_fetchTask</span>(function(err,
+res) {
+    if(res) {
+      res.pipe(process.stdout);
+    }
+  });
+  */
 }
-
-this.fetchTimer = setTimeout(function() {
-  self._afterFetch(new Error(&#x27;Request timed out (&#x27; + timeout + &#x27;ms)&#x27;));
-}, timeout);
-
-this.<span class="apidocCodeKeywordSpan">_fetchTask</span>(function(err, readableStream) {
-  self._afterFetch(err, readableStream);
-});
-};
-
-Resource.prototype._afterFetch = function(err, readableStream) {
-var self = this;
 ...</pre></li>
     </ul>
 
@@ -2409,18 +2584,19 @@ Resource.prototype.lookup = function() {
     <li>example usage<pre class="apidocCodePre">...
 };
 
-Package.getIndex = function(pname, auth, onDone) {
-// package index
-var uri = remoteUrl + pname,
-    r = Resource.get(uri, auth);
+Package.configure(packageConfig);
+api.configure(packageConfig);
 
-r.<span class="apidocCodeKeywordSpan">on</span>(&#x27;fetch-error&#x27;, function(err, current, max) {
-  logger.log(&#x27;Fetch failed (&#x27; + current + &#x27;/&#x27; + max + &#x27;): &#x27; + uri, err);
-});
+var server = http.createServer();
 
-r.on(&#x27;fetch-cached&#x27;, function() {
-  logger.log(&#x27;[OK] Reusing cached result for &#x27; + uri);
-});
+server.<span class="apidocCodeKeywordSpan">on</span>(&#x27;request&#x27;, function(req, res) {
+  if (config.loggingOpts.logRequesterIP) {
+    log.info(&#x22;Request from ip: &#x22;+req.connection.remoteAddress+ &#x22; for &#x22;+req.url);
+  }
+  if (!api.route(req, res)) {
+    log.error(&#x27;No route found&#x27;, req.url);
+    Package.proxy(req, res);
+  }
 ...</pre></li>
     </ul>
 
